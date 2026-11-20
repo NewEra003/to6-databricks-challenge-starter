@@ -1,0 +1,54 @@
+{
+  "summary": {
+    "batch": "training.to6_challenge3_inputs.returns_initial",
+    "checked_at": "2026-11-20T16:28:59.713592+00:00",
+    "required_columns": [
+      "return_id",
+      "tax_year",
+      "income",
+      "deduction"
+    ],
+    "unique_key": "return_id",
+    "row_count": 13,
+    "distinct_return_ids": 12,
+    "rows_missing_required": 1,
+    "duplicate_rows": 1,
+    "zero_income_rows": 2,
+    "passed": false
+  },
+  "affected_records": [
+    {
+      "batch": "training.to6_challenge3_inputs.returns_initial",
+      "return_id": "R01",
+      "taxpayer_id": "F0",
+      "tax_year": 2022,
+      "income": 100,
+      "deduction": 20,
+      "id_occurrences": 2,
+      "rejection_reason": "uniqueness: return_id occurs 2 times",
+      "checked_at": "2026-11-20T16:28:59.713592+00:00"
+    },
+    {
+      "batch": "training.to6_challenge3_inputs.returns_initial",
+      "return_id": "R01",
+      "taxpayer_id": "F0",
+      "tax_year": 2022,
+      "income": 100,
+      "deduction": 20,
+      "id_occurrences": 2,
+      "rejection_reason": "uniqueness: return_id occurs 2 times",
+      "checked_at": "2026-11-20T16:28:59.713592+00:00"
+    },
+    {
+      "batch": "training.to6_challenge3_inputs.returns_initial",
+      "return_id": "R02",
+      "taxpayer_id": "F1",
+      "tax_year": 2022,
+      "income": null,
+      "deduction": 33,
+      "id_occurrences": 1,
+      "rejection_reason": "completeness: missing income",
+      "checked_at": "2026-11-20T16:28:59.713592+00:00"
+    }
+  ]
+}

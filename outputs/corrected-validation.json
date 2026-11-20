@@ -1,0 +1,20 @@
+{
+  "summary": {
+    "batch": "training.to6_challenge3_inputs.returns_corrected",
+    "checked_at": "2026-11-20T16:30:15.912452+00:00",
+    "required_columns": [
+      "return_id",
+      "tax_year",
+      "income",
+      "deduction"
+    ],
+    "unique_key": "return_id",
+    "row_count": 12,
+    "distinct_return_ids": 12,
+    "rows_missing_required": 0,
+    "duplicate_rows": 0,
+    "zero_income_rows": 2,
+    "passed": true
+  },
+  "affected_records": []
+}

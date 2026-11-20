@@ -87,6 +87,141 @@ print({"input_schema": INPUT_SCHEMA, "output_schema": OUTPUT_SCHEMA})
 # MAGIC Relying only on distinct-ID counts. Row count and distinct count need to be compared.
 # MAGIC Overwriting the rejection evidence with the corrected run's outputs.    
 # MAGIC
+# MAGIC
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Cell 1: validator and gate
+
+# COMMAND ----------
+
+import json
+from datetime import datetime, timezone
+from pyspark.sql import functions as F, Window
+
+REQUIRED_COLUMNS = ["return_id", "tax_year", "income", "deduction"]
+UNIQUE_KEY = "return_id"
+
+
+class BatchRejected(Exception):
+    """Raised when a batch fails completeness or uniqueness checks."""
+
+
+def validate_batch(table_name):
+    """Apply the same completeness and uniqueness rules to any returns batch.
+    Read-only: never fills, drops or deduplicates records."""
+    df = spark.table(table_name)
+    absent = [c for c in REQUIRED_COLUMNS if c not in df.columns]
+    if absent:
+        raise ValueError(f"{table_name} is missing required columns: {absent}")
+
+    checked_at = datetime.now(timezone.utc).isoformat()
+    by_id = Window.partitionBy(UNIQUE_KEY)
+
+    missing_fields = F.concat_ws(
+        ", ", *[F.when(F.col(c).isNull(), F.lit(c)) for c in REQUIRED_COLUMNS]
+    )
+    flagged = (
+        df.withColumn("id_occurrences", F.count(F.lit(1)).over(by_id))
+          .withColumn("missing_fields", missing_fields)
+          .withColumn(
+              "rejection_reason",
+              F.concat_ws(
+                  "; ",
+                  F.when(F.col("missing_fields") != "",
+                         F.concat(F.lit("completeness: missing "), F.col("missing_fields"))),
+                  F.when(F.col(UNIQUE_KEY).isNotNull() & (F.col("id_occurrences") > 1),
+                         F.concat(F.lit("uniqueness: return_id occurs "),
+                                  F.col("id_occurrences").cast("string"), F.lit(" times"))),
+              ),
+          )
+    )
+
+    # Every affected row is kept, including each copy of a duplicate.
+    affected_df = (
+        flagged.filter(F.col("rejection_reason") != "")
+               .withColumn("batch", F.lit(table_name))
+               .withColumn("checked_at", F.lit(checked_at))
+               .select("batch", *df.columns, "id_occurrences", "rejection_reason", "checked_at")
+               .orderBy(UNIQUE_KEY, "tax_year")
+    )
+
+    stats = df.agg(
+        F.count(F.lit(1)).alias("row_count"),
+        F.countDistinct(UNIQUE_KEY).alias("distinct_return_ids"),
+        F.sum(F.when(F.greatest(*[F.col(c).isNull().cast("int") for c in REQUIRED_COLUMNS]) == 1, 1)
+               .otherwise(0)).alias("rows_missing_required"),
+        (F.count(UNIQUE_KEY) - F.countDistinct(UNIQUE_KEY)).alias("duplicate_rows"),
+        F.sum(F.when(F.col("income") == 0, 1).otherwise(0)).alias("zero_income_rows"),
+    ).first().asDict()
+
+    summary = {
+        "batch": table_name,
+        "checked_at": checked_at,
+        "required_columns": REQUIRED_COLUMNS,
+        "unique_key": UNIQUE_KEY,
+        **stats,
+        "passed": stats["rows_missing_required"] == 0 and stats["duplicate_rows"] == 0,
+    }
+    return {"df": df, "summary": summary, "affected_df": affected_df,
+            "affected": [r.asDict() for r in affected_df.collect()]}
+
+
+def write_evidence(result, file_name):
+    """Save the summary and affected records before the gate decides."""
+    out = repo_root / "outputs" / file_name
+    out.write_text(json.dumps({"summary": result["summary"],
+                               "affected_records": result["affected"]},
+                              indent=2, default=str) + "\n", encoding="utf-8")
+    return out
+
+
+def require_valid(result):
+    """Gate: call before any feature output is written."""
+    s = result["summary"]
+    if not s["passed"]:
+        reasons = sorted({r["rejection_reason"] for r in result["affected"]})
+        raise BatchRejected(f"{s['batch']} rejected: {reasons}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Cell 2: reject the initial batch
+
+# COMMAND ----------
+
+initial = validate_batch(INITIAL_TABLE)
+display(initial["affected_df"])
+print(initial["summary"])
+print(write_evidence(initial, "initial-rejection.json"))   # evidence first
+
+try:
+    require_valid(initial)
+    raise AssertionError("Initial batch unexpectedly passed")
+except BatchRejected as e:
+    initial_rejection = str(e)
+    print(initial_rejection)
+
+# Self-check against the known defects
+assert sorted(r["return_id"] for r in initial["affected"]) == ["R01", "R01", "R02"]
+assert initial["summary"]["row_count"] == 13 and initial["summary"]["distinct_return_ids"] == 12
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Cell 3: same rules on the corrected batch
+
+# COMMAND ----------
+
+corrected = validate_batch(CORRECTED_TABLE)
+print(corrected["summary"])
+print(write_evidence(corrected, "corrected-validation.json"))
+require_valid(corrected)              # stops the notebook here if it fails
+accepted_df = corrected["df"]         # the only input for feature output
+
+assert corrected["affected"] == []
+assert corrected["summary"]["row_count"] == corrected["summary"]["distinct_return_ids"] == 12
 
 # COMMAND ----------
 
@@ -101,7 +236,83 @@ print({"input_schema": INPUT_SCHEMA, "output_schema": OUTPUT_SCHEMA})
 
 # COMMAND ----------
 
-# Your implementation and verification here.
+from pyspark.sql import functions as F
+
+# Inputs to this step
+FEATURES_TABLE = f"{OUTPUT_SCHEMA}.return_features"
+assert OUTPUT_SCHEMA == "training.to6_c3_dbbd558d0c45", OUTPUT_SCHEMA
+assert corrected["summary"]["passed"], "Only a validated batch may produce features"
+
+FEATURE_COLUMNS = ["return_id", "tax_year", "deduction_to_income"]
+
+# Build features: zero income stays in with a null ratio
+features_df = (
+    accepted_df
+    .withColumn(
+        "deduction_to_income",
+        F.when(F.col("income") == 0, F.lit(None).cast("double"))
+         .otherwise(F.col("deduction").cast("double") / F.col("income")),
+    )
+    .select(*FEATURE_COLUMNS)          # drops taxpayer_id, income, deduction
+)
+
+# Pre-write checks: every accepted return exactly once
+accepted_ids = {r["return_id"] for r in accepted_df.select("return_id").collect()}
+assert features_df.count() == len(accepted_ids) == 12
+assert features_df.select("return_id").distinct().count() == 12
+
+# Overwrite so reruns replace the table instead of appending copies
+(features_df.write
+    .mode("overwrite")
+    .option("overwriteSchema", "true")
+    .saveAsTable(FEATURES_TABLE))
+
+# Read back the saved table
+saved = spark.table(FEATURES_TABLE)
+
+# 1. Exact columns, no restricted fields
+assert saved.columns == FEATURE_COLUMNS, saved.columns
+assert not {"taxpayer_id", "income", "deduction"} & set(saved.columns)
+
+# 2. Every accepted return once, nothing extra
+saved_ids = [r["return_id"] for r in saved.select("return_id").collect()]
+assert len(saved_ids) == len(set(saved_ids)) == 12
+assert set(saved_ids) == accepted_ids
+
+# 3. Saved rows equal the in-memory frame, row for row
+assert saved.exceptAll(features_df).count() == 0
+assert features_df.exceptAll(saved).count() == 0
+
+# 4. Nonzero case: expected value derived from the source row
+src = (spark.table(CORRECTED_TABLE)
+       .filter(F.col("return_id") == "R04")
+       .select("income", "deduction").first())
+expected_r04 = src["deduction"] / src["income"]                  # 59 / 400
+assert abs(expected_r04 - 0.1475) < 1e-12                        # hand-derived check
+saved_r04 = saved.filter(F.col("return_id") == "R04").first()
+assert saved_r04["tax_year"] == 2022
+assert abs(saved_r04["deduction_to_income"] - expected_r04) < 1e-12
+
+# 5. Zero-income cases stay in with a null ratio
+zero_ids = {r["return_id"] for r in
+            spark.table(CORRECTED_TABLE).filter(F.col("income") == 0).select("return_id").collect()}
+assert zero_ids == {"R03", "R09"}, zero_ids
+zero_saved = saved.filter(F.col("return_id").isin(*zero_ids)).collect()
+assert len(zero_saved) == 2
+assert all(r["deduction_to_income"] is None for r in zero_saved)
+
+# 6. Only zero-income returns have a null ratio
+assert saved.filter(F.col("deduction_to_income").isNull()).count() == len(zero_ids)
+
+display(saved.orderBy("return_id"))
+
+# Small export for outputs/
+features_export = [r.asDict() for r in saved.orderBy("return_id").collect()]
+(repo_root / "outputs" / "return_features.json").write_text(
+    json.dumps(features_export, indent=2) + "\n", encoding="utf-8")
+print(f"Saved and verified {FEATURES_TABLE}: {len(features_export)} rows; "
+      f"R04 = {saved_r04['deduction_to_income']} (expected {expected_r04}); "
+      f"R03, R09 ratio = null")
 
 # COMMAND ----------
 
