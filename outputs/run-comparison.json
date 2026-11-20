@@ -1,0 +1,35 @@
+{
+  "previous_run": {
+    "file": "run-20261120T165238Z.json",
+    "run_at_utc": "2026-11-20T16:52:38.554802+00:00",
+    "sha256": "74e5cd2e73423cd00ef066f1bd48960cbae55c55697cd4af20dd3ec0a724253c"
+  },
+  "current_run": {
+    "file": "run-20261120T171736Z.json",
+    "run_at_utc": "2026-11-20T17:17:36.074119+00:00",
+    "sha256": "74e5cd2e73423cd00ef066f1bd48960cbae55c55697cd4af20dd3ec0a724253c"
+  },
+  "per_table": {
+    "return_features": {
+      "same_return_ids": true,
+      "same_values": true,
+      "rows": 12
+    },
+    "features_train": {
+      "same_return_ids": true,
+      "same_values": true,
+      "rows": 4
+    },
+    "features_validation": {
+      "same_return_ids": true,
+      "same_values": true,
+      "rows": 4
+    },
+    "features_test": {
+      "same_return_ids": true,
+      "same_values": true,
+      "rows": 4
+    }
+  },
+  "identical": true
+}

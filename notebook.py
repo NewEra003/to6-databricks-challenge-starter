@@ -323,4 +323,142 @@ print(f"Saved and verified {FEATURES_TABLE}: {len(features_export)} rows; "
 
 # COMMAND ----------
 
-# Your implementation, rerun comparison and exports here.
+# MAGIC %md
+# MAGIC Cell 1: build and check the year splits
+
+# COMMAND ----------
+
+import hashlib
+from pyspark.sql import functions as F
+
+FEATURES_TABLE = f"{OUTPUT_SCHEMA}.return_features"
+FEATURE_COLUMNS = ["return_id", "tax_year", "deduction_to_income"]
+SPLITS = {
+    "features_train": 2022,
+    "features_validation": 2023,
+    "features_test": 2024,
+}
+
+features = spark.table(FEATURES_TABLE)
+assert features.columns == FEATURE_COLUMNS, features.columns
+
+# Every feature year must map to exactly one split; no return left unassigned
+feature_years = {r["tax_year"] for r in features.select("tax_year").distinct().collect()}
+assert feature_years == set(SPLITS.values()), f"Unassigned or missing years: {feature_years}"
+
+# Write each split with overwrite so a rerun replaces it instead of appending
+for table, year in SPLITS.items():
+    (features.filter(F.col("tax_year") == year)
+        .select(*FEATURE_COLUMNS)
+        .write.mode("overwrite")
+        .option("overwriteSchema", "true")
+        .saveAsTable(f"{OUTPUT_SCHEMA}.{table}"))
+
+# Read back every split
+saved_splits = {t: spark.table(f"{OUTPUT_SCHEMA}.{t}") for t in SPLITS}
+
+for table, year in SPLITS.items():
+    df = saved_splits[table]
+    assert df.columns == FEATURE_COLUMNS, (table, df.columns)
+    # Only its assigned year
+    assert df.filter(F.col("tax_year") != year).count() == 0, table
+    # No duplicate return IDs within the split
+    assert df.count() == df.select("return_id").distinct().count(), table
+
+# Across splits: each accepted return appears exactly once, with identical values
+all_splits = None
+for df in saved_splits.values():
+    all_splits = df if all_splits is None else all_splits.unionByName(df)
+
+assert all_splits.count() == features.count() == 12
+assert all_splits.select("return_id").distinct().count() == 12
+assert all_splits.exceptAll(features).count() == 0
+assert features.exceptAll(all_splits).count() == 0
+
+# Zero-income cases stay in their assigned split with a null ratio
+for rid, table in [("R03", "features_train"), ("R09", "features_test")]:
+    row = saved_splits[table].filter(F.col("return_id") == rid).first()
+    assert row is not None and row["deduction_to_income"] is None, (rid, table)
+
+for table, df in saved_splits.items():
+    print(table, SPLITS[table], df.count(), "rows")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Cell 2: save this run's snapshot and exports
+
+# COMMAND ----------
+
+from datetime import datetime, timezone
+
+def table_rows(df):
+    return [r.asDict() for r in df.orderBy("return_id").collect()]
+
+snapshot_tables = {"return_features": table_rows(spark.table(FEATURES_TABLE))}
+snapshot_tables.update({t: table_rows(df) for t, df in saved_splits.items()})
+
+canonical = json.dumps(snapshot_tables, sort_keys=True, separators=(",", ":"))
+run_at = datetime.now(timezone.utc)
+
+try:
+    ctx = dbutils.notebook.entry_point.getDbutils().notebook().getContext()
+    notebook_path = ctx.notebookPath().get()
+except Exception:
+    notebook_path = "unknown"
+
+snapshot = {
+    "run_at_utc": run_at.isoformat(),
+    "notebook_path": notebook_path,
+    "content_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+    "row_counts": {t: len(rows) for t, rows in snapshot_tables.items()},
+    "tables": snapshot_tables,
+}
+
+runs_dir = repo_root / "outputs" / "runs"
+runs_dir.mkdir(parents=True, exist_ok=True)
+snap_path = runs_dir / f"run-{run_at.strftime('%Y%m%dT%H%M%SZ')}.json"
+snap_path.write_text(json.dumps(snapshot, indent=2) + "\n", encoding="utf-8")
+
+# Small exports of the saved split tables
+for t, rows in snapshot_tables.items():
+    if t != "return_features":
+        (repo_root / "outputs" / f"{t}.json").write_text(
+            json.dumps(rows, indent=2) + "\n", encoding="utf-8")
+
+print(snap_path, snapshot["content_sha256"])
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Cell 3: compare the two most recent complete runs
+
+# COMMAND ----------
+
+snap_files = sorted(runs_dir.glob("run-*.json"))
+if len(snap_files) < 2:
+    print("Only one run recorded. Run the whole notebook again, then rerun this cell.")
+else:
+    prev, curr = (json.loads(p.read_text(encoding="utf-8")) for p in snap_files[-2:])
+    comparison = {
+        "previous_run": {"file": snap_files[-2].name, "run_at_utc": prev["run_at_utc"],
+                         "sha256": prev["content_sha256"]},
+        "current_run": {"file": snap_files[-1].name, "run_at_utc": curr["run_at_utc"],
+                        "sha256": curr["content_sha256"]},
+        "per_table": {},
+    }
+    for t in curr["tables"]:
+        a, b = prev["tables"].get(t), curr["tables"][t]
+        comparison["per_table"][t] = {
+            "same_return_ids": [r["return_id"] for r in a] == [r["return_id"] for r in b],
+            "same_values": a == b,
+            "rows": len(b),
+        }
+    comparison["identical"] = (
+        prev["content_sha256"] == curr["content_sha256"]
+        and all(v["same_values"] for v in comparison["per_table"].values())
+    )
+    (repo_root / "outputs" / "run-comparison.json").write_text(
+        json.dumps(comparison, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(comparison, indent=2))
+    assert comparison["identical"], "Runs differ - inspect per_table"

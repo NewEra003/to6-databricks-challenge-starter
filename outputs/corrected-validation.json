@@ -1,7 +1,7 @@
 {
   "summary": {
     "batch": "training.to6_challenge3_inputs.returns_corrected",
-    "checked_at": "2026-11-20T16:30:15.912452+00:00",
+    "checked_at": "2026-11-20T17:17:14.795460+00:00",
     "required_columns": [
       "return_id",
       "tax_year",
