@@ -47,17 +47,51 @@ print({"input_schema": INPUT_SCHEMA, "output_schema": OUTPUT_SCHEMA})
 
 # COMMAND ----------
 
-# Your investigation here.
+# MAGIC %md
+# MAGIC ## Returns_Initial Table Description
+# MAGIC - It has 5 columns (return_id, taxpayer_id, tax_year, income, deduction)
+# MAGIC     - return_id is a string and is supplied by upstream table parsed_source table (return_id)
+# MAGIC     - taxpayer_id is a string and is supplied by the upstream table parsed_source table (taxpayer_id)
+# MAGIC     - tax_year is an int and is supplied by the upstream table parsed_source table (tax_year)
+# MAGIC     - income is an int and is supplied by the upstream table parsed_source table (income, return_id)
+# MAGIC     - deduction is an int and is supplied by the upstream table parsed_source table (deduction)
+# MAGIC
+# MAGIC ## Returns_Corrected Table Description
+# MAGIC - It has 5 columns (return_id, taxpayer_id, tax_year, income, deduction)
+# MAGIC     - return_id is a string and is supplied by upstream table parsed_source table (return_id)
+# MAGIC     - taxpayer_id is a string and is supplied by the upstream table parsed_source table (taxpayer_id)
+# MAGIC     - tax_year is an int and is supplied by the upstream table parsed_source table (tax_year)
+# MAGIC     - income is an int and is supplied by the upstream table parsed_source table (income)
+# MAGIC     - deduction is an int and is supplied by the upstream table parsed_source table (deduction)
+# MAGIC
+# MAGIC ## Difference return_initial and return_corrected
+# MAGIC The difference is that income only has one upstream source (parsed_source.income) in return_corrected. While , return_initial has two sources(parsed_source.income and parsed_source.return_id). I also notice that there is duplicate data in return_initial while observing the sample data. There is also a row of data that shows null for income in return_initial. This is all data that looks to be corrected in return_corrected.
+# MAGIC
+# MAGIC ## Observations in summary
+# MAGIC     - Return R01 appears twice.
+# MAGIC     - Return R02 is missing income.
+# MAGIC     - Returns R03 and R09 have zero income.
+# MAGIC     - 2022 has 5 rows but only 4 distinct returns, and this delivery would fail validation.
+# MAGIC
 
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## 2. Decide which batch is usable
-# MAGIC Keep the initial rejection evidence and apply the same checks to the replacement.
+# MAGIC The below need to be determine for the batch completeness and uniqueness. The following fields are required, return ID, tax year, income, and deduction.
+# MAGIC Each row should have one return.
+# MAGIC
+# MAGIC Removing duplicates, filling nulls with zero, or dropping rows with missing values anywhere before the feature step.
+# MAGIC Checking uniqueness by taxpayer ID. Taxpayers can file in several years, so that ID repeats legitimately.
+# MAGIC Treating zero income (R03, R09) as missing. It's valid and those returns must stay.
+# MAGIC Relying only on distinct-ID counts. Row count and distinct count need to be compared.
+# MAGIC Overwriting the rejection evidence with the corrected run's outputs.    
+# MAGIC
 
 # COMMAND ----------
 
-# Your checks and decision here.
+# MAGIC %md
+# MAGIC # Your checks and decision here.
 
 # COMMAND ----------
 
