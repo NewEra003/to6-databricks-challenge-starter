@@ -1,0 +1,22 @@
+{
+  "returns_initial": {
+    "table": "training.to6_challenge3_inputs.returns_initial",
+    "total_rows": 13,
+    "missing_by_column": {
+      "return_id": 0,
+      "tax_year": 0,
+      "income": 1,
+      "deduction": 0
+    }
+  },
+  "returns_corrected": {
+    "table": "training.to6_challenge3_inputs.returns_corrected",
+    "total_rows": 12,
+    "missing_by_column": {
+      "return_id": 0,
+      "tax_year": 0,
+      "income": 0,
+      "deduction": 0
+    }
+  }
+}

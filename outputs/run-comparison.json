@@ -1,12 +1,12 @@
 {
   "previous_run": {
-    "file": "run-20261120T165238Z.json",
-    "run_at_utc": "2026-11-20T16:52:38.554802+00:00",
+    "file": "run-20261122T220803Z.json",
+    "run_at_utc": "2026-11-22T22:08:03.701863+00:00",
     "sha256": "74e5cd2e73423cd00ef066f1bd48960cbae55c55697cd4af20dd3ec0a724253c"
   },
   "current_run": {
-    "file": "run-20261120T171736Z.json",
-    "run_at_utc": "2026-11-20T17:17:36.074119+00:00",
+    "file": "run-20261122T221921Z.json",
+    "run_at_utc": "2026-11-22T22:19:21.152051+00:00",
     "sha256": "74e5cd2e73423cd00ef066f1bd48960cbae55c55697cd4af20dd3ec0a724253c"
   },
   "per_table": {

@@ -76,6 +76,75 @@ print({"input_schema": INPUT_SCHEMA, "output_schema": OUTPUT_SCHEMA})
 
 # COMMAND ----------
 
+# DBTITLE 1,Full-batch profile: missing values and counts by year
+# Full-batch profile of both deliveries, run BEFORE any validation gate.
+# Read-only: nothing is filled, dropped or deduplicated here.
+import json
+from pyspark.sql import functions as F
+
+PROFILE_REQUIRED = ["return_id", "tax_year", "income", "deduction"]
+BATCHES = {"returns_initial": INITIAL_TABLE, "returns_corrected": CORRECTED_TABLE}
+
+missing_profile, year_profile = {}, {}
+for name, table in BATCHES.items():
+    df = spark.table(table)
+
+    # 1. Missing-value count for each required column over every row of the batch
+    missing_row = df.agg(
+        F.count(F.lit(1)).alias("total_rows"),
+        *[F.sum(F.col(c).isNull().cast("int")).alias(c) for c in PROFILE_REQUIRED],
+    ).first().asDict()
+    missing_profile[name] = {
+        "table": table,
+        "total_rows": missing_row["total_rows"],
+        "missing_by_column": {c: int(missing_row[c] or 0) for c in PROFILE_REQUIRED},
+    }
+
+    # 2. Record counts by tax year over every row (a null year would show as its own group)
+    by_year = (
+        df.groupBy("tax_year")
+          .agg(
+              F.count(F.lit(1)).alias("rows"),
+              F.countDistinct("return_id").alias("distinct_return_ids"),
+              (F.count("return_id") - F.countDistinct("return_id")).alias("duplicate_rows"),
+              F.sum(F.when(F.col("income") == 0, 1).otherwise(0)).alias("zero_income_rows"),
+          )
+          .orderBy("tax_year")
+    )
+    print(f"{table}: rows by tax year")
+    display(by_year)
+    year_rows = [r.asDict() for r in by_year.collect()]
+    assert sum(r["rows"] for r in year_rows) == missing_row["total_rows"], "year counts must cover the full batch"
+    year_profile[name] = {"table": table, "by_tax_year": year_rows}
+
+print("Missing values per required column (full batch):")
+display(spark.createDataFrame(
+    [(n, p["total_rows"], *[p["missing_by_column"][c] for c in PROFILE_REQUIRED])
+     for n, p in missing_profile.items()],
+    ["batch", "total_rows", *[f"missing_{c}" for c in PROFILE_REQUIRED]],
+))
+
+# Save as inspectable exports so they can be committed with the Git folder
+out_dir = repo_root / "outputs"
+(out_dir / "profile-missing-values.json").write_text(
+    json.dumps(missing_profile, indent=2) + "\n", encoding="utf-8")
+(out_dir / "profile-counts-by-year.json").write_text(
+    json.dumps(year_profile, indent=2) + "\n", encoding="utf-8")
+print("Saved outputs/profile-missing-values.json and outputs/profile-counts-by-year.json")
+
+# COMMAND ----------
+
+# DBTITLE 1,Profile findings and impact
+# MAGIC %md
+# MAGIC ### Profile findings (from the cell above, full batches)
+# MAGIC - **Missing values:** `returns_initial` has 1 missing `income` (R02, 2022); `return_id`, `tax_year` and `deduction` have none. `returns_corrected` has no missing required values.
+# MAGIC - **Counts by year:** `returns_initial` has 5 rows / 4 distinct IDs in 2022 (R01 duplicated), 4 / 4 in 2023 and 4 / 4 in 2024. `returns_corrected` has 4 / 4 in every year (12 rows total).
+# MAGIC - **Zero income:** one return in 2022 (R03) and one in 2024 (R09) in both batches. These are valid and must stay, with a null ratio.
+# MAGIC
+# MAGIC **Impact on the next steps:** the missing income and the duplicate in 2022 mean `returns_initial` must fail the completeness and uniqueness gate in section 2. The corrected batch has 4 returns per year, so each split table should get exactly 4 rows. Zero income must not be treated as missing.
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## 2. Decide which batch is usable
 # MAGIC The below need to be determine for the batch completeness and uniqueness. The following fields are required, return ID, tax year, income, and deduction.

@@ -1,7 +1,7 @@
 {
   "summary": {
     "batch": "training.to6_challenge3_inputs.returns_initial",
-    "checked_at": "2026-11-20T17:17:13.142694+00:00",
+    "checked_at": "2026-11-22T22:18:57.021014+00:00",
     "required_columns": [
       "return_id",
       "tax_year",
@@ -26,7 +26,7 @@
       "deduction": 20,
       "id_occurrences": 2,
       "rejection_reason": "uniqueness: return_id occurs 2 times",
-      "checked_at": "2026-11-20T17:17:13.142694+00:00"
+      "checked_at": "2026-11-22T22:18:57.021014+00:00"
     },
     {
       "batch": "training.to6_challenge3_inputs.returns_initial",
@@ -37,7 +37,7 @@
       "deduction": 20,
       "id_occurrences": 2,
       "rejection_reason": "uniqueness: return_id occurs 2 times",
-      "checked_at": "2026-11-20T17:17:13.142694+00:00"
+      "checked_at": "2026-11-22T22:18:57.021014+00:00"
     },
     {
       "batch": "training.to6_challenge3_inputs.returns_initial",
@@ -48,7 +48,7 @@
       "deduction": 33,
       "id_occurrences": 1,
       "rejection_reason": "completeness: missing income",
-      "checked_at": "2026-11-20T17:17:13.142694+00:00"
+      "checked_at": "2026-11-22T22:18:57.021014+00:00"
     }
   ]
 }

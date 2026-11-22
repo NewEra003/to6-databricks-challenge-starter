@@ -40,7 +40,23 @@ or comparison evidence showing identical return IDs and values in the feature an
 Explain how you checked year assignment, one copy of every accepted return and no appended copies.
 
 Per run: the notebook URL and run time. Use UTC to match the snapshot file names.
-Evidence files: outputs/runs/run-20261120T165238Z.json and outputs/runs/run-20261120T171736Z.json, plus outputs/run-comparison.json showing matching contents and identical IDs and values for all four tables.
+
+Evidence files: 
+Run 1:
+https://dbc-48a16403-f66f.cloud.databricks.com/editor/notebooks/127024866557984
+
+    "file": "run-20261122T220803Z.json",
+    "run_at_utc": "2026-11-22T22:08:03.701863+00:00",
+    "sha256": "74e5cd2e73423cd00ef066f1bd48960cbae55c55697cd4af20dd3ec0a724253c"
+
+Run 2:
+https://dbc-48a16403-f66f.cloud.databricks.com/editor/notebooks/127024866557984
+
+    "file": "run-20261122T221921Z.json",
+    "run_at_utc": "2026-11-22T22:19:21.152051+00:00",
+    "sha256": "74e5cd2e73423cd00ef066f1bd48960cbae55c55697cd4af20dd3ec0a724253c"
+
+outputs/run-comparison.json showing matching contents and identical IDs and values for all four tables.
 Year assignment: each split table holds only its year, and every year in return_features maps to exactly one split.
 One copy of each return: the three splits together equal return_features row for row, with 12 rows and 12 unique IDs.
 No appended copies: every table is overwritten on each run, and the row counts stay the same between runs.
@@ -50,7 +66,16 @@ No appended copies: every table is overwritten on each run, and the row counts s
 List final exports under outputs/, distinguishing practice files. State anything not verified.
 
 Final exports:
+profile-missing-values.json: missing-value count for each required column over the full initial and corrected batches, computed before validation (initial: income 1, others 0; corrected: all 0)
+profile-counts-by-year.json: rows, distinct return IDs, duplicates and zero-income rows by tax year for both full batches (initial 2022: 5 rows / 4 IDs; all other years 4 / 4)
 initial-rejection.json and corrected-validation.json
 return_features.json, features_train.json, features_validation.json and features_test.json
 runs/run-*.json and run-comparison.json
-Practice file: connection-practice.json is from the ungraded connection check. Label it as practice.
+Practice file: connection-practice.json is from the ungraded connection check.
+
+Note Verified:
+Accuracy of corrected values: I checked returns_corrected against the completeness and uniqueness rules only. I could not confirm that replacement values, such as R02's income of 200, are correct against the original source documents; they come from the data owner's corrected delivery.
+Lineage beyond the supplied view: the upstream source (parsed_source) comes from training.to6_challenge3_inputs.source_lineage and the Catalog descriptions. I did not inspect the upstream parsing or the raw XML.
+Model leakage: these checks set the data contract only. They do not show that every source of leakage is gone. Later modelling work must add labels and check which fields are available at prediction time.
+Value ranges: amounts are expected to be nonnegative, but the gate enforces only completeness and uniqueness. Either confirm that no negative income or deduction exists, or keep this item in the list.
+Floating-point precision: I compared ratios such as R04 = 0.1475 within a tolerance of 1e-12, not as exact decimals.

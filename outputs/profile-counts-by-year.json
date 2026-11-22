@@ -1,0 +1,54 @@
+{
+  "returns_initial": {
+    "table": "training.to6_challenge3_inputs.returns_initial",
+    "by_tax_year": [
+      {
+        "tax_year": 2022,
+        "rows": 5,
+        "distinct_return_ids": 4,
+        "duplicate_rows": 1,
+        "zero_income_rows": 1
+      },
+      {
+        "tax_year": 2023,
+        "rows": 4,
+        "distinct_return_ids": 4,
+        "duplicate_rows": 0,
+        "zero_income_rows": 0
+      },
+      {
+        "tax_year": 2024,
+        "rows": 4,
+        "distinct_return_ids": 4,
+        "duplicate_rows": 0,
+        "zero_income_rows": 1
+      }
+    ]
+  },
+  "returns_corrected": {
+    "table": "training.to6_challenge3_inputs.returns_corrected",
+    "by_tax_year": [
+      {
+        "tax_year": 2022,
+        "rows": 4,
+        "distinct_return_ids": 4,
+        "duplicate_rows": 0,
+        "zero_income_rows": 1
+      },
+      {
+        "tax_year": 2023,
+        "rows": 4,
+        "distinct_return_ids": 4,
+        "duplicate_rows": 0,
+        "zero_income_rows": 0
+      },
+      {
+        "tax_year": 2024,
+        "rows": 4,
+        "distinct_return_ids": 4,
+        "duplicate_rows": 0,
+        "zero_income_rows": 1
+      }
+    ]
+  }
+}
